@@ -30,7 +30,7 @@ Acceso LAN: Para acceder desde otros dispositivos (celulares/tablets), utilice l
 Simulación DNS: Se recomienda editar el archivo hosts del sistema operativo para mapear la IP a un dominio local (ej. www.axmusic.local).
 Este proyecto demuestra el uso de procesamiento asíncrono (Threading) para no bloquear la CPU, la gestión de caché local para optimizar el ancho de banda, y el despliegue de servicios web en la capa de aplicación del modelo OSI.
 
-##**Estructura del Proyecto**
+## Estructura del Proyecto
 
 main.py: Lógica principal y orquestación de hilos (Multithreading).
 /templates: Contiene el archivo index.html para la interfaz de streaming web.
