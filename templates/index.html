@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>AxMusic Web Server</title>
+    <style>
+        body { background: #03045e; color: #caf0f8; font-family: Arial; text-align: center; }
+        .song-card { background: #0077b6; margin: 10px; padding: 15px; border-radius: 8px; }
+        audio { width: 80%; margin-top: 10px; }
+    </style>
+</head>
+<body>
+    <h1>🎵 AxMusic Cloud Player</h1>
+    <p>Servidor activo en la red local</p>
+
+    {% for cancion in canciones %}
+    <div class="song-card">
+        <h3>{{ cancion }}</h3>
+        <audio controls>
+            <source src="/play/{{ cancion }}" type="audio/mpeg">
+        </audio>
+    </div>
+    {% endfor %}
+</body>
+</html>
