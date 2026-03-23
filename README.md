@@ -1,2 +1,22 @@
-# AxMusic
-Reproductor de musica
+# 🎵 AxMusic - Sistema Distribuido de Gestión Multimedia
+
+Este proyecto es una solución integral de software desarrollada para las cátedras de **Redes de Computadoras** y **Arquitectura y Mantenimiento de Equipos**. AxMusic combina una aplicación de escritorio para la gestión de música con un servidor de streaming en la red local (LAN).
+
+---
+
+## 🚀 Características Principales
+
+* **Interfaz de Escritorio (GUI):** Desarrollada en Python con `Tkinter`, permitiendo búsquedas, descargas y gestión de favoritos.
+* **Servidor de Streaming (Capa 7):** Implementación de un servidor web con `Flask` para servir contenido multimedia vía HTTP a otros dispositivos.
+* **Procesamiento de Señales:** Transcodificación automática de flujos de audio a formato MP3 mediante el uso de binarios de bajo nivel.
+* **Persistencia de Datos:** Gestión de listas de reproducción y favoritos mediante archivos estructurados en formato `JSON`.
+
+---
+
+## 🛠️ Requisitos de Arquitectura y Sistema
+
+Para el correcto funcionamiento del software en una estación de trabajo, se deben cumplir las siguientes dependencias:
+
+1. **Python 3.10+** instalado en el sistema.
+2. **Bibliotecas de Python:** ```bash
+   pip install yt-dlp flask pygame requests
