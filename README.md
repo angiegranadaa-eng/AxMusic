@@ -21,7 +21,7 @@ Para el correcto funcionamiento del software en una estación de trabajo, se deb
 2. **Bibliotecas de Python:** ```bash
    pip install yt-dlp flask pygame requests
 
-## **Configuración de Red y Conectividad**
+## Configuración de Red y Conectividad
 
 El sistema opera bajo una arquitectura Cliente-Servidor:
 Direccionamiento: El servidor realiza el bind en el host 0.0.0.0, escuchando peticiones en todas las interfaces de red del host.
