@@ -1,0 +1,4 @@
+flask
+pygame
+yt-dlp
+requests
