@@ -1,6 +1,6 @@
 # 🎵 AxMusic - Sistema Distribuido de Gestión Multimedia
 
-Este proyecto es una solución integral de software desarrollada para las cátedras de **Redes de Computadoras** y **Arquitectura y Mantenimiento de Equipos**. AxMusic combina una aplicación de escritorio para la gestión de música con un servidor de streaming en la red local (LAN).
+Este proyecto es una solución integral de software desarrollada para las cátedras de **Redes de Computadoras**, **Programacion orientada a objetos** y **Arquitectura y Mantenimiento de Equipos**. AxMusic combina una aplicación de escritorio para la gestión de música con un servidor de streaming en la red local (LAN).
 
 ---
 
