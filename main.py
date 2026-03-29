@@ -1,593 +1,287 @@
 import tkinter as tk
-from tkinter import filedialog, messagebox
+from tkinter import messagebox
+import customtkinter as ctk
 import pygame
 import os
 import yt_dlp
 import threading
 import json
 import re
-from flask import Flask, render_template, send_file
-# Los demás (tkinter, os, pygame, etc.) se quedan igual
+import random
+from flask import Flask
 
-# ================= CONFIG =================
+# ================= CONFIGURACIÓN INICIAL =================
 pygame.mixer.init()
+ctk.set_appearance_mode("dark")
+ctk.set_default_color_theme("blue")
 
 DOWNLOAD_FOLDER = "music_vault"
 PLAYLIST_FOLDER = "playlists"
 FAV_FILE = "favoritos.json"
-RECENT_FILE = "recientes.json"
 
-os.makedirs(DOWNLOAD_FOLDER, exist_ok=True)
-os.makedirs(PLAYLIST_FOLDER, exist_ok=True)
+for folder in [DOWNLOAD_FOLDER, PLAYLIST_FOLDER]:
+    os.makedirs(folder, exist_ok=True)
 
+# Variables Globales
 playlist = []
 indice_actual = 0
+paused = False
+modo_actual = "explorar" 
 
-# ================= COLORES =================
-BG = "#03045e"
-CARD = "#0077b6"
-HOVER = "#00b4d8"
-TEXT = "#caf0f8"
+# ================= FUNCIONES DE LÓGICA =================
 
-# ================= FUNCIONES =================
 def limpiar_texto(texto):
     return re.sub(r'[^a-zA-Z0-9 ]', '', texto).lower()
-def guardar_reciente(nombre, ruta):
-    data = {"nombre": nombre, "ruta": ruta}
 
-    recientes = []
+def generar_color(nombre):
+    random.seed(nombre) 
+    r = random.randint(20, 50); g = random.randint(50, 100); b = random.randint(100, 180)
+    return f"#{r:02x}{g:02x}{b:02x}"
 
-    if os.path.exists(RECENT_FILE):
-        with open(RECENT_FILE) as f:
-            recientes = json.load(f)
+def cambiar_fondo(nombre):
+    color = generar_color(nombre)
+    main.configure(fg_color=color)
+    frame_cards.configure(fg_color=color)
 
-    # evitar duplicados
-    recientes = [r for r in recientes if r["ruta"] != ruta]
-
-    recientes.insert(0, data)  # lo pone arriba
-
-    # limitar a 20 canciones
-    recientes = recientes[:20]
-
-    with open(RECENT_FILE, "w") as f:
-        json.dump(recientes, f, indent=4)
-def ver_recientes():
-    if not os.path.exists(RECENT_FILE):
-        messagebox.showinfo("Info", "No hay historial aún")
-        return
-
-    with open(RECENT_FILE) as f:
-        recientes = json.load(f)
-
-    lista.delete(0, tk.END)
-    playlist.clear()
-
-    for item in recientes:
-        lista.insert(tk.END, f"🕒 {item['nombre']}")
-        playlist.append(item["ruta"])
-
-def mostrar_guia_ffmpeg():
-    guia = tk.Toplevel()
-    guia.title("Guía de instalación - FFmpeg")
-    guia.geometry("600x400")
-    guia.config(bg="#03045e")
-
-    pasos = [
-        "Paso 1:\n\nDescarga FFmpeg desde:\nhttps://ffmpeg.org/download.html",
-        
-        "Paso 2:\n\nDescomprime el archivo ZIP descargado.",
-        
-        "Paso 3:\n\nEntra a la carpeta 'bin'\nEjemplo:\nC:\\ffmpeg\\bin",
-        
-        "Paso 4:\n\nCopia esa ruta (la barra de dirección).",
-        
-        "Paso 5:\n\nAgrega esa ruta al PATH:\n\n- Busca 'Variables de entorno'\n- Edita PATH\n- Añade la ruta",
-        
-        "Paso 6:\n\nReinicia tu computadora\n\nLuego prueba en consola:\nffmpeg -version",
-        
-        "✅ Listo!\n\nTu programa AxMusic funcionará correctamente 🎵"
-    ]
-
-    indice = [0]
-
-    texto = tk.Label(
-        guia,
-        text=pasos[indice[0]],
-        bg="#03045e",
-        fg="#caf0f8",
-        font=("Arial", 12),
-        wraplength=500,
-        justify="left"
-    )
-    texto.pack(pady=40)
-
-    def siguiente():
-        if indice[0] < len(pasos) - 1:
-            indice[0] += 1
-            texto.config(text=pasos[indice[0]])
-
-    def anterior():
-        if indice[0] > 0:
-            indice[0] -= 1
-            texto.config(text=pasos[indice[0]])
-
-    frame_botones = tk.Frame(guia, bg="#03045e")
-    frame_botones.pack()
-
-    tk.Button(frame_botones, text="⬅ Anterior", command=anterior).grid(row=0, column=0, padx=10)
-    tk.Button(frame_botones, text="➡ Siguiente", command=siguiente).grid(row=0, column=1, padx=10)
-
-# ================= UI =================
-ventana = tk.Tk()
-ventana.title("AxMusic 🎵")
-ventana.geometry("1000x700")
-ventana.config(bg=BG)
-
-# Marca
-marca = tk.Label(
-    ventana,
-    text="AXMUSIC",
-    bg=BG,
-    fg="#00b4d8",
-    font=("Arial", 32, "bold")
-)
-marca.place(x=30, y=600)  # ajusta si quieres más arriba/abajo
-
-# ================= SPLASH =================
-def mostrar_splash(root):
-    splash = tk.Toplevel()
-    splash.overrideredirect(True)
-
-    try:
-        foto = tk.PhotoImage(file="axmusic.png")
-
-        ancho, alto = 800, 500
-        x = (splash.winfo_screenwidth() // 2) - (ancho // 2)
-        y = (splash.winfo_screenheight() // 2) - (alto // 2)
-
-        splash.geometry(f"{ancho}x{alto}+{x}+{y}")
-
-        label = tk.Label(splash, image=foto)
-        label.image = foto
-        label.pack()
-
-    except:
-        splash.destroy()
-        root.deiconify()
-        return
-
-    root.withdraw()
-    splash.after(3000, lambda: cerrar_splash(splash, root))
-
-
+# --- SPLASH SCREEN ---
 def cerrar_splash(splash, root):
     splash.destroy()
-    root.deiconify()
+    root.deiconify() # Muestra la ventana principal
 
-# ================= LAYOUT =================
-sidebar = tk.Frame(ventana, bg=CARD, width=200)
-sidebar.pack(side="left", fill="y")
+def mostrar_splash(root):
+    splash = tk.Toplevel()
+    splash.overrideredirect(True) # Quita bordes de ventana
 
-main = tk.Frame(ventana, bg=BG)
-main.pack(side="right", fill="both", expand=True)
+    try:
+        # Intenta cargar la imagen axmusic.png
+        img = tk.PhotoImage(file="axmusic.png")
+        w, h = img.width(), img.height()
+        x = (splash.winfo_screenwidth()//2)-(w//2)
+        y = (splash.winfo_screenheight()//2)-(h//2)
+        splash.geometry(f"{w}x{h}+{x}+{y}")
 
-# ================= LISTA =================
-lista = tk.Listbox(
-    main,
-    bg=CARD,
-    fg="white",
-    selectbackground=HOVER,
-    font=("Arial", 12),
-    bd=0
-)
-lista.pack(pady=10, padx=10, fill="both", expand=True)
+        tk.Label(splash, image=img, bg="#0b132b").pack()
+        splash.image = img
+    except:
+        # Si no existe la imagen, crea un splash de texto rápido
+        splash.geometry("400x200")
+        splash.configure(bg="#0b132b")
+        ctk.CTkLabel(splash, text="🎧 AXMUSIC PRO", font=("Segoe UI", 30, "bold")).pack(expand=True)
 
-# ================= PLAYER =================
-player = tk.Frame(main, bg=BG)
-player.pack(fill="x")
+    root.withdraw() # Esconde la ventana principal mientras carga el splash
+    splash.after(2500, lambda: cerrar_splash(splash, root))
 
-titulo_actual = tk.Label(
-    player,
-    text="Nada reproduciendo",
-    bg=BG,
-    fg=TEXT,
-    font=("Arial", 14, "bold")
-)
-titulo_actual.pack()
+# --- GESTIÓN DE FAVORITOS ---
+def guardar_favorito():
+    if not playlist: return
+    ruta_act = playlist[indice_actual]
+    favs = []
+    if os.path.exists(FAV_FILE):
+        with open(FAV_FILE, "r") as f: favs = json.load(f)
+    
+    if not any(f['ruta'] == ruta_act for f in favs):
+        favs.append({"nombre": os.path.basename(ruta_act), "ruta": ruta_act})
+        with open(FAV_FILE, "w") as f: json.dump(favs, f, indent=4)
+        messagebox.showinfo("Éxito", "Añadido a favoritos ❤️")
 
-progreso = tk.DoubleVar()
+def ver_favoritos():
+    global modo_actual, playlist
+    if not os.path.exists(FAV_FILE):
+        messagebox.showinfo("Info", "No tienes favoritos aún")
+        return
+    with open(FAV_FILE, "r") as f: favs = json.load(f)
+    playlist.clear()
+    for item in favs: playlist.append(item["ruta"])
+    modo_actual = "favoritos"
+    render_cards()
 
-barra = tk.Scale(
-    player,
-    from_=0,
-    to=100,
-    orient="horizontal",
-    variable=progreso,
-    length=500,
-    bg=BG,
-    fg=TEXT,
-    troughcolor=CARD
-)
-barra.pack()
+# --- GESTIÓN DE PLAYLISTS ---
+def guardar_playlist_nueva():
+    nombre = entrada_playlist.get()
+    if not nombre or nombre == "Nombre playlist...":
+        messagebox.showwarning("Atención", "Escribe un nombre para la playlist")
+        return
+    data = [{"nombre": os.path.basename(p), "ruta": p} for p in playlist]
+    with open(os.path.join(PLAYLIST_FOLDER, f"{nombre}.json"), "w") as f:
+        json.dump(data, f, indent=4)
+    messagebox.showinfo("OK", f"Playlist '{nombre}' creada")
 
-nombre_playlist_label = tk.Label(
-    main,
-    text="Sin playlist activa",
-    bg=BG,
-    fg="#90e0ef",
-    font=("Arial", 12, "italic")
-)
-nombre_playlist_label.pack()
+def ver_todas_las_playlists():
+    global modo_actual, playlist
+    playlist.clear()
+    archivos = [f for f in os.listdir(PLAYLIST_FOLDER) if f.endswith(".json")]
+    for arch in archivos:
+        playlist.append(os.path.join(PLAYLIST_FOLDER, arch))
+    modo_actual = "playlists_lista"
+    render_cards()
 
-panel_playlist = tk.Frame(main, bg=CARD)
-panel_playlist.pack(fill="x", pady=10, padx=20)
-# ================= CONTROL =================
-def reproducir():
-    global indice_actual
+def abrir_ventana_añadir():
+    global playlist, indice_actual, modo_actual
+    if not playlist or modo_actual == "playlists_lista":
+        messagebox.showwarning("Atención", "Selecciona una canción primero")
+        return
 
-    if lista.curselection():
-        indice_actual = lista.curselection()[0]
+    ventana_add = ctk.CTkToplevel(ventana)
+    ventana_add.title("Añadir a...")
+    ventana_add.geometry("300x400")
+    ventana_add.attributes("-topmost", True)
 
-    if playlist:
-        ruta = playlist[indice_actual]
-        pygame.mixer.music.load(ruta)
-        pygame.mixer.music.play()
-        guardar_reciente(os.path.basename(ruta), ruta)
-        titulo_actual.config(text=os.path.basename(ruta))
+    ctk.CTkLabel(ventana_add, text="Selecciona Playlist", font=("Segoe UI", 14, "bold")).pack(pady=10)
+    scroll = ctk.CTkScrollableFrame(ventana_add, width=250, height=250)
+    scroll.pack(pady=10, padx=10)
 
+    archivos = [f for f in os.listdir(PLAYLIST_FOLDER) if f.endswith(".json")]
+    
+    def guardar_en(archivo_json):
+        ruta_p = os.path.join(PLAYLIST_FOLDER, archivo_json)
+        cancion = {"nombre": os.path.basename(playlist[indice_actual]), "ruta": playlist[indice_actual]}
+        try:
+            with open(ruta_p, "r") as f: contenido = json.load(f)
+        except: contenido = []
+        if not any(c['ruta'] == cancion['ruta'] for c in contenido):
+            contenido.append(cancion)
+            with open(ruta_p, "w") as f: json.dump(contenido, f, indent=4)
+            messagebox.showinfo("Hecho", f"Guardado en {archivo_json}")
+            ventana_add.destroy()
+
+    for arch in archivos:
+        ctk.CTkButton(scroll, text=arch.replace(".json", ""), command=lambda a=arch: guardar_en(a)).pack(fill="x", pady=2)
+
+# --- CONTROL DE REPRODUCCIÓN ---
+def reproducir_indice(i):
+    global indice_actual, paused, modo_actual, playlist
+    if modo_actual == "playlists_lista":
+        ruta_json = playlist[i]
+        with open(ruta_json, "r") as f: data = json.load(f)
+        playlist.clear()
+        for item in data: playlist.append(item["ruta"])
+        modo_actual = "explorar"; render_cards(); return
+
+    indice_actual = i
+    ruta = playlist[i]
+    pygame.mixer.music.load(ruta)
+    pygame.mixer.music.play()
+    nombre = os.path.basename(ruta)
+    titulo_actual.configure(text=nombre); label_cancion.configure(text=nombre)
+    cambiar_fondo(nombre)
+    paused = False; btn_pausa.configure(text="⏸")
+
+def pausar_reanudar():
+    global paused
+    if paused: pygame.mixer.music.unpause(); paused = False; btn_pausa.configure(text="⏸")
+    else: pygame.mixer.music.pause(); paused = True; btn_pausa.configure(text="▶")
 
 def siguiente():
-    global indice_actual
-    if playlist:
+    global indice_actual, modo_actual
+    if playlist and modo_actual != "playlists_lista":
         indice_actual = (indice_actual + 1) % len(playlist)
-        reproducir()
-
+        reproducir_indice(indice_actual)
 
 def actualizar_reproduccion():
     if pygame.mixer.music.get_busy():
-        pos = pygame.mixer.music.get_pos() / 1000
-        progreso.set(pos)
-    else:
-        if playlist:
-            siguiente()
-
+        progreso.set(pygame.mixer.music.get_pos()/1000)
+    elif playlist and not paused and modo_actual != "playlists_lista":
+        siguiente()
     ventana.after(1000, actualizar_reproduccion)
 
-# ================= DESCARGA =================
+# --- BÚSQUEDA ---
+def buscar():
+    global playlist
+    nombre = entrada_busqueda.get()
+    if not nombre: return
+    for archivo in os.listdir(DOWNLOAD_FOLDER):
+        if limpiar_texto(nombre) in limpiar_texto(archivo):
+            playlist.append(os.path.join(DOWNLOAD_FOLDER, archivo))
+            render_cards(); return
+    descargar(nombre)
+
 def descargar(nombre):
     def hilo():
         ydl_opts = {
-            "format": "bestaudio/best",
-            "outtmpl": f"{DOWNLOAD_FOLDER}/%(title)s.%(ext)s",
-            "postprocessors": [{
-                "key": "FFmpegExtractAudio",
-                "preferredcodec": "mp3"
-            }],
-            "default_search": "ytsearch",
-            "quiet": True
+            "format": "bestaudio/best", "outtmpl": f"{DOWNLOAD_FOLDER}/%(title)s.%(ext)s",
+            "postprocessors": [{"key": "FFmpegExtractAudio","preferredcodec": "mp3"}],
+            "default_search": "ytsearch", "quiet": True
         }
-
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(f"ytsearch1:{nombre}", download=True)["entries"][0]
             archivo = os.path.splitext(ydl.prepare_filename(info))[0] + ".mp3"
-
         playlist.append(archivo)
-        guardar_reciente(os.path.basename(archivo), archivo)
-        lista.insert(tk.END, os.path.basename(archivo))
-
+        ventana.after(0, render_cards)
     threading.Thread(target=hilo, daemon=True).start()
 
-# ================= BUSCAR =================
-# 🔎 BUSCADOR
-entrada_busqueda = tk.Entry(main, font=("Arial", 12))
-entrada_busqueda.pack(pady=5)
-
-# 📂 NOMBRE PLAYLIST
-entrada_playlist = tk.Entry(main, font=("Arial", 12))
-entrada_playlist.insert(0, "Nombre playlist...")
-entrada_playlist.pack(pady=5)
-
-def buscar():
-    nombre = entrada_busqueda.get()
-
-    for archivo in os.listdir(DOWNLOAD_FOLDER):
-        if limpiar_texto(nombre) in limpiar_texto(archivo):
-            ruta = os.path.join(DOWNLOAD_FOLDER, archivo)
-            playlist.append(ruta)
-            lista.insert(tk.END, archivo)
-            return
-
-    descargar(nombre)
-
-# ================= FAVORITOS =================
-def guardar_favorito():
-    if not lista.curselection():
-        messagebox.showwarning("Atención", "Selecciona una canción")
-        return
-
-    i = lista.curselection()[0]
-    data = {"nombre": lista.get(i), "ruta": playlist[i]}
-
-    favs = []
-    if os.path.exists(FAV_FILE):
-        with open(FAV_FILE) as f:
-            favs = json.load(f)
-
-    if data not in favs:
-        favs.append(data)
-
-    with open(FAV_FILE, "w") as f:
-        json.dump(favs, f, indent=4)
-
-    messagebox.showinfo("OK", "Guardado en favoritos ❤️")
-
-
-def ver_favoritos():
-    if not os.path.exists(FAV_FILE):
-        return
-
-    with open(FAV_FILE) as f:
-        favs = json.load(f)
-
-    lista.delete(0, tk.END)
-    playlist.clear()
-
-    for item in favs:
-        lista.insert(tk.END, item["nombre"])
-        playlist.append(item["ruta"])
-def eliminar_favorito():
-    if not lista.curselection():
-        messagebox.showwarning("Atención", "Selecciona una canción")
-        return
-
-    index = lista.curselection()[0]
-
-    if not os.path.exists(FAV_FILE):
-        return
-
-    with open(FAV_FILE) as f:
-        favs = json.load(f)
-
-    favs.pop(index)
-
-    with open(FAV_FILE, "w") as f:
-        json.dump(favs, f, indent=4)
-
-    lista.delete(index)
-    playlist.pop(index)
-
-    messagebox.showinfo("OK", "Eliminado de favoritos 💔")
-
-# ================= PLAYLISTS =================
-def guardar_playlist():
-    nombre = entrada_playlist.get()
-
-    if not nombre or nombre == "Nombre playlist...":
-        messagebox.showerror("Error", "Escribe nombre de la playlist")
-        return
-
-    data = []
-    for i in range(len(playlist)):
-        data.append({
-            "nombre": lista.get(i),
-            "ruta": playlist[i]
-        })
-
-    ruta = os.path.join(PLAYLIST_FOLDER, f"{nombre}.json")
-
-    with open(ruta, "w") as f:
-        json.dump(data, f, indent=4)
-  
-    messagebox.showinfo("OK", f"Playlist '{nombre}' guardada 🎧")
-
-def ver_playlists():
-    lista.delete(0, tk.END)
-    playlist.clear()
-
-    for archivo in os.listdir(PLAYLIST_FOLDER):
-        if archivo.endswith(".json"):
-            lista.insert(tk.END, f"📂 {archivo}")
-
-
-def ver_contenido_playlist():
-    if not lista.curselection():
-        return
-
-    nombre_archivo = lista.get(lista.curselection()[0]).replace("📂 ", "")
-    ruta = os.path.join(PLAYLIST_FOLDER, nombre_archivo)
-
-    try:
-        with open(ruta) as f:
-            data = json.load(f)
-
-        lista.delete(0, tk.END)
-
-        for item in data:
-            lista.insert(tk.END, f"🎵 {item['nombre']}")
-
-    except Exception as e:
-        messagebox.showerror("Error", str(e))
-
-
-def cargar_playlist():
-    if not lista.curselection():
-        messagebox.showwarning("Atención", "Selecciona una playlist")
-        return
-
-    nombre_archivo = lista.get(lista.curselection()[0]).replace("📂 ", "")
-    ruta = os.path.join(PLAYLIST_FOLDER, nombre_archivo)
-    ventana.playlist_actual = ruta
-    try:
-        with open(ruta) as f:
-            data = json.load(f)
-
-        lista.delete(0, tk.END)
-        playlist.clear()
-
-        for item in data:
-            lista.insert(tk.END, item["nombre"])
-            playlist.append(item["ruta"])
-        nombre_playlist_label.config(text=f"Playlist: {nombre_archivo}")
-        messagebox.showinfo("OK", f"Playlist '{nombre_archivo}' cargada 🎧")
-
-    except Exception as e:
-        messagebox.showerror("Error", str(e))
-
-def agregar_a_playlist():
-    if not lista.curselection():
-        messagebox.showwarning("Atención", "Selecciona una canción")
-        return
-
-    # Obtener canción seleccionada
-    i = lista.curselection()[0]
-    data = {"nombre": lista.get(i), "ruta": playlist[i]}
-
-    # Ver playlists disponibles
-    archivos = [f for f in os.listdir(PLAYLIST_FOLDER) if f.endswith(".json")]
-
-    if not archivos:
-        messagebox.showerror("Error", "No hay playlists creadas")
-        return
-
-    # Ventana para elegir playlist
-    ventana_select = tk.Toplevel(ventana)
-    ventana_select.title("Seleccionar Playlist")
-    ventana_select.geometry("300x300")
-
-    listbox = tk.Listbox(ventana_select)
-    listbox.pack(fill="both", expand=True, padx=10, pady=10)
-
-    for f in archivos:
-        listbox.insert(tk.END, f)
-
-    def guardar_en_playlist():
-        if not listbox.curselection():
-            return
-
-        nombre_archivo = listbox.get(listbox.curselection()[0])
-        ruta = os.path.join(PLAYLIST_FOLDER, nombre_archivo)
-
-        try:
-            with open(ruta) as f:
-                contenido = json.load(f)
-        except:
-            contenido = []
-
-        if data not in contenido:
-            contenido.append(data)
-
-        with open(ruta, "w") as f:
-            json.dump(contenido, f, indent=4)
-
-        messagebox.showinfo("OK", f"Agregado a {nombre_archivo} 🎧")
-        ventana_select.destroy()
-
-    tk.Button(
-        ventana_select,
-        text="Guardar aquí",
-        command=guardar_en_playlist
-    ).pack(pady=10)
-
-def eliminar_playlist():
-    if not lista.curselection():
-        messagebox.showwarning("Atención", "Selecciona una playlist")
-        return
-
-    nombre = lista.get(lista.curselection()[0]).replace("📂 ", "")
-    ruta = os.path.join(PLAYLIST_FOLDER, nombre)
-
-    confirmar = messagebox.askyesno("Confirmar", f"¿Eliminar {nombre}?")
-
-    if confirmar:
-        os.remove(ruta)
-        messagebox.showinfo("OK", "Playlist eliminada 🗑️")
-        ver_playlists()
-def eliminar_cancion_playlist():
-    if not lista.curselection():
-        messagebox.showwarning("Atención", "Selecciona una canción")
-        return
-
-    if not hasattr(ventana, "playlist_actual"):
-        messagebox.showerror("Error", "Primero carga una playlist")
-        return
-
-    index = lista.curselection()[0]
-
-    with open(ventana.playlist_actual) as f:
-        data = json.load(f)
-
-    data.pop(index)
-
-    with open(ventana.playlist_actual, "w") as f:
-        json.dump(data, f, indent=4)
-
-    lista.delete(index)
-    playlist.pop(index)
-
-    messagebox.showinfo("OK", "Canción eliminada 🗑️")
-
-# ================= BOTONES =================
-def btn(parent, txt, cmd):
-    return tk.Button(
-        parent,
-        text=txt,
-        command=cmd,
-        bg=CARD,
-        fg="white",
-        activebackground=HOVER,
-        bd=0,
-        pady=5
-    )
-
-btn(main, "🔎 Buscar", buscar).pack()
-btn(main, "▶ Play", reproducir).pack()
-btn(main, "⏭ Siguiente", siguiente).pack()
-btn(main, "➕ Añadir a Playlist", agregar_a_playlist).pack(fill="x", pady=5)
-btn(main, "❤️ Guardar favorito", guardar_favorito).pack(fill="x", pady=5)
-
-btn(sidebar, "⚙ Configuración", mostrar_guia_ffmpeg).pack(fill="x", pady=5)
-btn(sidebar, "⭐ Ver favoritos", ver_favoritos).pack(fill="x", pady=5)
-btn(sidebar, "💔 Quitar favorito", eliminar_favorito).pack(fill="x", pady=5)
-btn(sidebar, "🕒 Recientes", ver_recientes).pack(fill="x", pady=5)
-
-btn(panel_playlist, "📂 Ver Playlists", ver_playlists).pack(fill="x", pady=5)
-btn(panel_playlist, "💾 Guardar Playlist", guardar_playlist).pack(fill="x", pady=5)
-btn(panel_playlist, "🗑️ Eliminar Playlist", eliminar_playlist).pack(fill="x", pady=5)
-btn(panel_playlist, "👀 Ver contenido", ver_contenido_playlist).pack(fill="x", pady=5)
-btn(panel_playlist, "❌ Quitar canción", eliminar_cancion_playlist).pack(fill="x", pady=5)
-btn(panel_playlist, "▶ Reproducir Playlist", cargar_playlist).pack(fill="x", pady=5)
-
-
-# ... (aquí terminan tus botones) ...
-
-# ================= START =================
-mostrar_splash(ventana)
-actualizar_reproduccion()
-
-# --- PEGA EL BLOQUE DE FLASK AQUÍ ---
+# ================= INTERFAZ GRÁFICA (UI) =================
+
+ventana = ctk.CTk()
+ventana.geometry("1100x750")
+ventana.title("AxMusic Pro")
+
+sidebar = ctk.CTkFrame(ventana, width=200, fg_color="#0b132b")
+sidebar.pack(side="left", fill="y")
+ctk.CTkLabel(sidebar, text="🎧 AXMUSIC", font=("Segoe UI", 22, "bold")).pack(pady=20)
+
+ctk.CTkButton(sidebar, text="🏠 Explorar", command=lambda: [globals().update(modo_actual="explorar"), render_cards()]).pack(fill="x", padx=10, pady=5)
+ctk.CTkButton(sidebar, text="⭐ Favoritos", command=ver_favoritos).pack(fill="x", padx=10, pady=5)
+ctk.CTkButton(sidebar, text="📂 Mis Playlists", command=ver_todas_las_playlists).pack(fill="x", padx=10, pady=5)
+
+ctk.CTkLabel(sidebar, text="Nueva Playlist:", font=("Segoe UI", 12)).pack(pady=(20,0))
+entrada_playlist = ctk.CTkEntry(sidebar, placeholder_text="Nombre...")
+entrada_playlist.pack(pady=5, padx=10)
+ctk.CTkButton(sidebar, text="💾 Guardar Lista", fg_color="#386641", command=guardar_playlist_nueva).pack(fill="x", padx=10, pady=5)
+
+main = ctk.CTkFrame(ventana, fg_color="#0b132b")
+main.pack(side="right", fill="both", expand=True)
+
+top = ctk.CTkFrame(main, fg_color="transparent")
+top.pack(fill="x", padx=20, pady=15)
+entrada_busqueda = ctk.CTkEntry(top, placeholder_text="Buscar música...", width=350)
+entrada_busqueda.pack(side="left", padx=10)
+ctk.CTkButton(top, text="🔎 Buscar", width=100, command=buscar).pack(side="left")
+
+content = ctk.CTkFrame(main, fg_color="transparent")
+content.pack(fill="both", expand=True)
+
+panel_visual = ctk.CTkFrame(content, width=250, fg_color="#1c2541", corner_radius=15)
+panel_visual.pack(side="left", fill="y", padx=20, pady=10)
+label_cancion = ctk.CTkLabel(panel_visual, text="Nada sonando", font=("Segoe UI", 14, "bold"), wraplength=200)
+label_cancion.pack(pady=20)
+ctk.CTkButton(panel_visual, text="❤️ Favorito", fg_color="#c1121f", command=guardar_favorito).pack(pady=5, padx=20, fill="x")
+ctk.CTkButton(panel_visual, text="➕ Añadir a...", fg_color="#3a86ff", command=abrir_ventana_añadir).pack(pady=5, padx=20, fill="x")
+
+frame_cards = ctk.CTkScrollableFrame(content, fg_color="#0b132b")
+frame_cards.pack(side="right", fill="both", expand=True, padx=10)
+
+def render_cards():
+    for w in frame_cards.winfo_children(): w.destroy()
+    for i, ruta in enumerate(playlist):
+        nombre = os.path.basename(ruta)
+        card = ctk.CTkFrame(frame_cards, width=150, height=200, fg_color="#1c2541")
+        card.grid(row=i//4, column=i%4, padx=10, pady=10)
+        icon = "📂" if modo_actual == "playlists_lista" else "🎼"
+        ctk.CTkLabel(card, text=icon, font=("Arial", 40)).pack(pady=10)
+        ctk.CTkLabel(card, text=nombre[:15], font=("Segoe UI", 11)).pack()
+        txt_btn = "Abrir" if modo_actual == "playlists_lista" else "▶"
+        ctk.CTkButton(card, text=txt_btn, width=60, command=lambda idx=i: reproducir_indice(idx)).pack(pady=10)
+
+player = ctk.CTkFrame(ventana, height=100, fg_color="#1c2541")
+player.pack(side="bottom", fill="x")
+titulo_actual = ctk.CTkLabel(player, text="---", font=("Segoe UI", 12))
+titulo_actual.pack()
+progreso = ctk.CTkSlider(player, from_=0, to=100)
+progreso.pack(fill="x", padx=50)
+
+btns = ctk.CTkFrame(player, fg_color="transparent")
+btns.pack(pady=5)
+btn_pausa = ctk.CTkButton(btns, text="⏸", width=50, command=pausar_reanudar)
+btn_pausa.pack(side="left", padx=10)
+ctk.CTkButton(btns, text="⏭", width=50, command=siguiente).pack(side="left", padx=10)
+
+# Flask Server
 app = Flask(__name__)
-
 @app.route('/')
-def home():
-    # Listamos solo archivos que terminen en .mp3 para evitar errores
-    canciones = [f for f in os.listdir(DOWNLOAD_FOLDER) if f.endswith('.mp3')]
-    return render_template('index.html', canciones=canciones)
+def home(): return "Servidor Activo"
+threading.Thread(target=lambda: app.run(host='0.0.0.0', port=5000, debug=False, use_reloader=False), daemon=True).start()
 
-@app.route('/play/<nombre>')
-def play_web(nombre):
-    # Usamos path join para que busque en la carpeta de descargas
-    ruta = os.path.abspath(os.path.join(DOWNLOAD_FOLDER, nombre))
-    return send_file(ruta)
-
-def iniciar_servidor():
-    # debug=False es vital para que no choque con Tkinter
-    app.run(host='0.0.0.0', port=5000, debug=False, use_reloader=False)
-
-threading.Thread(target=iniciar_servidor, daemon=True).start()
-# ------------------------------------
-
-ventana.mainloop()
-# ================= START =================
+# ================= INICIO =================
 mostrar_splash(ventana)
 actualizar_reproduccion()
 ventana.mainloop()
