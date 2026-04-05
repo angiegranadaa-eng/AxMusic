@@ -1,3 +1,4 @@
+
 import tkinter as tk
 from tkinter import messagebox
 import customtkinter as ctk
@@ -9,6 +10,7 @@ import json
 import re
 import random
 from flask import Flask
+import psutil
 
 # ================= CONFIGURACIÓN INICIAL =================
 pygame.mixer.init()
@@ -209,11 +211,56 @@ def descargar(nombre):
         ventana.after(0, render_cards)
     threading.Thread(target=hilo, daemon=True).start()
 
+#================= Datos de la GPU Y CPU =================
+def obtener_recursos():
+    cpu = psutil.cpu_percent(interval=1)
+    ram = psutil.virtual_memory().percent
+    return cpu, ram
+
+def actualizar_recursos():
+    cpu, ram = obtener_recursos()
+    label_recursos.config(text=f"CPU: {cpu}% | RAM: {ram}%")
+
+    modo_inteligente()  # 👈 AÑADIR ESTO
+
+    ventana.after(2000, actualizar_recursos)
+
+def analizar_rendimiento():
+    cpu = psutil.cpu_percent()
+    ram = psutil.virtual_memory().percent
+
+    if cpu > 70:
+        return "alto_cpu"
+    elif ram > 75:
+        return "alta_ram"
+    else:
+        return "normal"
+def modo_inteligente():
+    estado = analizar_rendimiento()
+
+    if estado == "alto_cpu":
+        label_estado.config(text="Estado: CPU alto ⚠️")
+
+    elif estado == "alta_ram":
+        label_estado.config(text="Estado: RAM alta ⚠️")
+
+    else:
+        label_estado.config(text="Estado: Normal ✅")
+
+
 # ================= INTERFAZ GRÁFICA (UI) =================
 
 ventana = ctk.CTk()
 ventana.geometry("1100x750")
 ventana.title("AxMusic Pro")
+
+import tkinter as tk
+
+label_recursos = tk.Label(ventana, text="CPU: 0% | RAM: 0%")
+label_recursos.pack()
+
+label_estado = tk.Label(ventana, text="Estado: Normal")
+label_estado.pack()
 
 sidebar = ctk.CTkFrame(ventana, width=200, fg_color="#0b132b")
 sidebar.pack(side="left", fill="y")
@@ -284,4 +331,5 @@ threading.Thread(target=lambda: app.run(host='0.0.0.0', port=5000, debug=False, 
 # ================= INICIO =================
 mostrar_splash(ventana)
 actualizar_reproduccion()
+actualizar_recursos()
 ventana.mainloop()
